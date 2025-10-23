@@ -26,8 +26,7 @@ export function randomDelay() {
 export function randomDuckDuckGoMirror() {
   const mirrors = [
     "https://duckduckgo.com",
-    "https://lite.duckduckgo.com",
-    "https://duckduckgo.eu"
+    "https://lite.duckduckgo.com"
   ];
   return mirrors[Math.floor(Math.random() * mirrors.length)];
 }
