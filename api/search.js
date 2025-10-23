@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import cheerio from 'cheerio';
+import * as cheerio from 'cheerio';
 
 async function scrapeDuckDuckGo(q) {
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`;
