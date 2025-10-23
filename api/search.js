@@ -2,37 +2,66 @@ import fetch from 'node-fetch';
 import * as cheerio from 'cheerio';
 
 async function scrapeDuckDuckGo(q) {
-  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`;
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0',
-      'Accept-Language': 'en-US,en;q=0.9',
-    },
-  });
+  const urlsToTry = [
+    `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`,
+    `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(q)}`,
+  ];
 
-  if (!response.ok) throw new Error('DuckDuckGo request failed');
+  for (const url of urlsToTry) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+          'Accept-Language': 'en-US,en;q=0.9',
+          Referer: 'https://duckduckgo.com/',
+        },
+      });
 
-  const html = await response.text();
-  const $ = cheerio.load(html);
+      if (!response.ok) {
+        const body = await response.text();
+        console.error(`DuckDuckGo failed at ${url} status:${response.status} body:`, body.slice(0, 200));
+        continue; // try next URL
+      }
 
-  const results = [];
-  $('a.result__a').each((_, el) => {
-    const link = $(el).attr('href');
-    const title = $(el).text().trim();
-    const snippet = $(el).parent().next('a.result__snippet, div.result__snippet').text().trim() || '';
-    if (link && title) {
-      results.push({ title, link, snippet });
+      const html = await response.text();
+      const $ = cheerio.load(html);
+
+      let results = [];
+
+      if (url.includes('html.duckduckgo.com')) {
+        // Original DuckDuckGo lite HTML markup
+        $('a.result__a').each((_, el) => {
+          const link = $(el).attr('href');
+          const title = $(el).text().trim();
+          const snippet = $(el).parent().next().find('.result__snippet').text().trim() || '';
+          if (link && title) results.push({ title, link, snippet });
+        });
+      } else if (url.includes('lite.duckduckgo.com')) {
+        // Lite version markup: results in table rows
+        $('table.result tbody tr').each((_, el) => {
+          const title = $(el).find('a').first().text().trim();
+          const link = $(el).find('a').first().attr('href');
+          const snippet = $(el).find('td.snippet').text().trim() || '';
+          if (link && title) results.push({ title, link, snippet });
+        });
+      }
+
+      if (results.length > 0) return results;
+    } catch (e) {
+      console.error(`DuckDuckGo error on ${url}:`, e.message);
     }
-  });
-  return results;
+  }
+
+  throw new Error('All DuckDuckGo mirrors failed');
 }
 
 async function scrapeBing(q) {
   const url = `https://www.bing.com/search?q=${encodeURIComponent(q)}`;
   const response = await fetch(url, {
     headers: {
-      'User-Agent': 'Mozilla/5.0',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
       'Accept-Language': 'en-US,en;q=0.9',
+      Referer: 'https://bing.com/',
     },
   });
 
@@ -57,8 +86,9 @@ async function scrapeGoogle(q) {
   const url = `https://www.google.com/search?q=${encodeURIComponent(q)}`;
   const response = await fetch(url, {
     headers: {
-      'User-Agent': 'Mozilla/5.0',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
       'Accept-Language': 'en-US,en;q=0.9',
+      Referer: 'https://google.com/',
     },
   });
 
@@ -71,7 +101,7 @@ async function scrapeGoogle(q) {
   $('div.g').each((_, el) => {
     const title = $(el).find('h3').text().trim();
     const link = $(el).find('a').attr('href');
-    const snippet = $(el).find('.IsZvec').text().trim() || '';
+    const snippet = $(el).find('.IsZvec, .aCOpRe').text().trim() || '';
     if (link && title) {
       results.push({ title, link, snippet });
     }
