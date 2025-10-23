@@ -1,91 +1,109 @@
 import fetch from 'node-fetch';
+import cheerio from 'cheerio';
 
-const BING_API_KEY = process.env.BING_API_KEY; // Add your Bing API key in Vercel env
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY; // Add your Google API key
-const GOOGLE_CSE_ID = process.env.GOOGLE_CSE_ID; // Add your Custom Search Engine ID
+async function scrapeDuckDuckGo(q) {
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`;
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0',
+      'Accept-Language': 'en-US,en;q=0.9',
+    },
+  });
+
+  if (!response.ok) throw new Error('DuckDuckGo request failed');
+
+  const html = await response.text();
+  const $ = cheerio.load(html);
+
+  const results = [];
+  $('a.result__a').each((_, el) => {
+    const link = $(el).attr('href');
+    const title = $(el).text().trim();
+    const snippet = $(el).parent().next('a.result__snippet, div.result__snippet').text().trim() || '';
+    if (link && title) {
+      results.push({ title, link, snippet });
+    }
+  });
+  return results;
+}
+
+async function scrapeBing(q) {
+  const url = `https://www.bing.com/search?q=${encodeURIComponent(q)}`;
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0',
+      'Accept-Language': 'en-US,en;q=0.9',
+    },
+  });
+
+  if (!response.ok) throw new Error('Bing request failed');
+
+  const html = await response.text();
+  const $ = cheerio.load(html);
+
+  const results = [];
+  $('#b_results > li.b_algo').each((_, el) => {
+    const title = $(el).find('h2 > a').text().trim();
+    const link = $(el).find('h2 > a').attr('href');
+    const snippet = $(el).find('.b_caption p').text().trim() || '';
+    if (link && title) {
+      results.push({ title, link, snippet });
+    }
+  });
+  return results;
+}
+
+async function scrapeGoogle(q) {
+  const url = `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0',
+      'Accept-Language': 'en-US,en;q=0.9',
+    },
+  });
+
+  if (!response.ok) throw new Error('Google request failed');
+
+  const html = await response.text();
+  const $ = cheerio.load(html);
+
+  const results = [];
+  $('div.g').each((_, el) => {
+    const title = $(el).find('h3').text().trim();
+    const link = $(el).find('a').attr('href');
+    const snippet = $(el).find('.IsZvec').text().trim() || '';
+    if (link && title) {
+      results.push({ title, link, snippet });
+    }
+  });
+  return results;
+}
 
 export default async function handler(req, res) {
   const { q, engine = 'duckduckgo' } = req.query;
+
   if (!q) return res.status(400).json({ error: 'Missing ?q= parameter' });
 
   try {
-    let data;
-
+    let results;
     if (engine === 'duckduckgo') {
-      // DuckDuckGo Instant Answer API
-      const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&no_redirect=1&no_html=1`;
-      const response = await fetch(url);
-      data = await response.json();
-
-      // Simplify and map results (topics)
-      const results = (data.RelatedTopics || []).flatMap(topic => {
-        if (topic.Topics) {
-          // Some RelatedTopics are nested
-          return topic.Topics.map(t => ({
-            text: t.Text,
-            url: t.FirstURL,
-          }));
-        }
-        return [{
-          text: topic.Text,
-          url: topic.FirstURL,
-        }];
-      });
-
-      return res.status(200).json({
-        type: 'duckduckgo',
-        query: q,
-        results,
-      });
-
+      results = await scrapeDuckDuckGo(q);
     } else if (engine === 'bing') {
-      if (!BING_API_KEY) return res.status(500).json({ error: 'Bing API key not configured' });
-
-      const url = `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(q)}`;
-      const response = await fetch(url, {
-        headers: { 'Ocp-Apim-Subscription-Key': BING_API_KEY }
-      });
-      data = await response.json();
-
-      const results = (data.webPages?.value || []).map(item => ({
-        title: item.name,
-        url: item.url,
-        snippet: item.snippet,
-      }));
-
-      return res.status(200).json({
-        type: 'bing',
-        query: q,
-        results,
-      });
-
+      results = await scrapeBing(q);
     } else if (engine === 'google') {
-      if (!GOOGLE_API_KEY || !GOOGLE_CSE_ID) {
-        return res.status(500).json({ error: 'Google API key or CSE ID not configured' });
-      }
-
-      const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CSE_ID}&q=${encodeURIComponent(q)}`;
-      const response = await fetch(url);
-      data = await response.json();
-
-      const results = (data.items || []).map(item => ({
-        title: item.title,
-        url: item.link,
-        snippet: item.snippet,
-      }));
-
-      return res.status(200).json({
-        type: 'google',
-        query: q,
-        results,
-      });
-
+      results = await scrapeGoogle(q);
     } else {
       return res.status(400).json({ error: 'Unsupported search engine' });
     }
 
+    res.status(200).json({
+      type: engine,
+      query: q,
+      count: results.length,
+      results,
+    });
   } catch (error) {
-    console.error('Search API error:', error);
-    res.status(500).json({ error: 'Failed to fetch search results' });
+    console.error('Search scraping error:', error);
+    res.status(500).json({ error: 'Failed to fetch results', details: error.message });
   }
 }
