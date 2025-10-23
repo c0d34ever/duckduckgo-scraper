@@ -2,6 +2,20 @@ import fetch from "node-fetch";
 import * as cheerio from "cheerio";
 import { cache, isRateLimited, randomDelay, randomDuckDuckGoMirror } from "./utils.js";
 
+function cleanDuckDuckGoLink(href) {
+  if (!href) return href;
+  try {
+    const url = new URL(href, "https://duckduckgo.com");
+    if (url.pathname === "/l/") {
+      const actualUrl = url.searchParams.get("uddg");
+      return actualUrl ? decodeURIComponent(actualUrl) : href;
+    }
+    return href;
+  } catch {
+    return href;
+  }
+}
+
 export default async function handler(req, res) {
   const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
   const { q } = req.query;
@@ -22,9 +36,10 @@ export default async function handler(req, res) {
     const $ = cheerio.load(html);
 
     const results = [];
-    $(".result").each((_, el) => {
+    $(".result__body").each((_, el) => {
       const title = $(el).find(".result__a").text();
-      const link = $(el).find(".result__a").attr("href");
+      const rawLink = $(el).find(".result__a").attr("href");
+      const link = cleanDuckDuckGoLink(rawLink);
       const snippet = $(el).find(".result__snippet").text();
       if (title && link) results.push({ title, link, snippet });
     });
