@@ -1,32 +1,34 @@
-import { LRUCache } from "lru-cache";
+import LRUCache from "lru-cache";
 
-export const cache = new LRUCache({
-  max: 500,             // store up to 500 results
-  ttl: 1000 * 60 * 30,  // 30 minutes
-});
+export const cache = new LRUCache({ max: 500, ttl: 1000 * 60 * 30 }); // 30 mins cache
 
-const requestLog = new Map(); // basic rate limiter
+const ipRequests = new Map();
 
-export function isRateLimited(ip, limit = 30, windowMs = 60000) {
+export function isRateLimited(ip) {
   const now = Date.now();
-  const windowStart = now - windowMs;
-  if (!requestLog.has(ip)) requestLog.set(ip, []);
-  const timestamps = requestLog.get(ip).filter((t) => t > windowStart);
+  const windowMs = 1000 * 60; // 1 min window
+  const maxRequests = 10;
+
+  if (!ipRequests.has(ip)) {
+    ipRequests.set(ip, []);
+  }
+  const timestamps = ipRequests.get(ip).filter(t => now - t < windowMs);
   timestamps.push(now);
-  requestLog.set(ip, timestamps);
-  return timestamps.length > limit;
+  ipRequests.set(ip, timestamps);
+
+  return timestamps.length > maxRequests;
 }
 
-export async function randomDelay(min = 200, max = 800) {
-  const ms = Math.floor(Math.random() * (max - min + 1)) + min;
-  return new Promise((r) => setTimeout(r, ms));
+export function randomDelay() {
+  return new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
 }
 
 export function randomDuckDuckGoMirror() {
   const mirrors = [
-    "https://html.duckduckgo.com/html/",
-    "https://lite.duckduckgo.com/lite/",
-    "https://start.duckduckgo.com/html/"
+    "https://duckduckgo.com",
+    "https://lite.duckduckgo.com",
+    "https://duckduckgo.eu"
   ];
   return mirrors[Math.floor(Math.random() * mirrors.length)];
 }
+

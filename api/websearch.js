@@ -16,7 +16,6 @@ function cleanDuckDuckGoLink(href) {
   }
 }
 
-// DuckDuckGo scraper
 async function scrapeDuckDuckGo(q) {
   const base = randomDuckDuckGoMirror();
   const url = `${base}?q=${encodeURIComponent(q)}`;
@@ -37,7 +36,6 @@ async function scrapeDuckDuckGo(q) {
   return results;
 }
 
-// Bing scraper
 async function scrapeBing(q) {
   const url = `https://www.bing.com/search?q=${encodeURIComponent(q)}`;
 
@@ -46,7 +44,6 @@ async function scrapeBing(q) {
   const $ = cheerio.load(html);
 
   const results = [];
-  // Bing uses li.b_algo for results
   $("li.b_algo").each((_, el) => {
     const title = $(el).find("h2 a").text();
     const link = $(el).find("h2 a").attr("href");
@@ -57,7 +54,6 @@ async function scrapeBing(q) {
   return results;
 }
 
-// Simple Google scraper (basic, may be flaky)
 async function scrapeGoogle(q) {
   const url = `https://www.google.com/search?q=${encodeURIComponent(q)}`;
 
@@ -66,8 +62,6 @@ async function scrapeGoogle(q) {
   const $ = cheerio.load(html);
 
   const results = [];
-  // Google's HTML is complicated and changes often.
-  // We try a common selector for organic results:
   $("div.g").each((_, el) => {
     const title = $(el).find("h3").text();
     const link = $(el).find("a").attr("href");
@@ -83,13 +77,15 @@ export default async function handler(req, res) {
   const { q, engine = "duckduckgo" } = req.query;
 
   if (!q) return res.status(400).json({ error: "Missing ?q= parameter" });
-  if (!["duckduckgo", "bing", "google"].includes(engine.toLowerCase())) {
-    return res.status(400).json({ error: "Invalid engine. Must be one of duckduckgo, bing, google" });
+
+  const supportedEngines = ["duckduckgo", "bing", "google"];
+  if (!supportedEngines.includes(engine.toLowerCase())) {
+    return res.status(400).json({ error: `Invalid engine. Must be one of ${supportedEngines.join(", ")}` });
   }
 
   if (isRateLimited(ip)) return res.status(429).json({ error: "Too many requests" });
 
-  const cacheKey = `search:${engine}:${q}`;
+  const cacheKey = `websearch:${engine}:${q}`;
   if (cache.has(cacheKey)) return res.status(200).json(cache.get(cacheKey));
 
   try {
@@ -113,7 +109,7 @@ export default async function handler(req, res) {
     res.setHeader("Cache-Control", "s-maxage=1800, stale-while-revalidate=86400");
     res.status(200).json(data);
   } catch (err) {
-    console.error("Error:", err);
-    res.status(500).json({ error: "Failed to fetch results" });
+    console.error("Websearch error:", err);
+    res.status(500).json({ error: "Failed to fetch web results" });
   }
 }
